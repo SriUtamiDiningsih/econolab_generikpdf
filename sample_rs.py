@@ -1,7 +1,9 @@
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QGridLayout, QScrollArea
+from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt
 from datetime import datetime
 import gspread
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
 from xhtml2pdf import pisa
 
 class SampleSummary:
@@ -22,63 +24,41 @@ class SampleSummary:
             return None
 
         try:
-            # Membuat DataFrame dari data
             df_dp = pd.DataFrame(data)
-
-            # Mengonversi kolom tanggal menjadi tipe datetime
             df_dp['Tanggal Pickup'] = pd.to_datetime(df_dp['Tanggal Pickup'], format='%d/%m/%Y')
-
-            # Buat kolom bulan dari tanggal
             df_dp['Bulan'] = df_dp['Tanggal Pickup'].dt.strftime("%B")
 
-            # Filter data berdasarkan bulan Juli, Agustus, September, dan Oktober
             start_date = datetime(2023, 7, 1)
             end_date = datetime(2023, 10, 31)
             filtered_data = df_dp[(df_dp['Tanggal Pickup'] >= start_date) & (df_dp['Tanggal Pickup'] <= end_date)]
-
-            # Mengurutkan data berdasarkan RS/Klinik dan Tanggal Pickup
             sorted_data = filtered_data.sort_values(by=['Tanggal Pickup', 'RS/Klinik'])
-
-            # Membuat ringkasan berdasarkan RS/Klinik
-            summary = sorted_data.groupby([ 'ID Sample', 'Tanggal Pickup', 'RS/Klinik'])['ID Sample'].count().reset_index(name='Summary Pembelian')
+            summary = sorted_data.groupby(['ID Sample', 'Tanggal Pickup', 'RS/Klinik'])['ID Sample'].count().reset_index(name='Summary Pembelian')
             return summary
         except Exception as e:
             print(f"Error while generating summary: {str(e)}")
             return None
 
-    #Membuat Pdf
     def export_to_pdf(self, summary, output_filename):
         if summary is None:
             return
 
         try:
-            html_content = summary.to_html(index=False)
-
-            # Open the file in binary mode ('wb')
-            with open(output_filename, 'wb') as f:
-                pisa.CreatePDF(html_content, dest=f)
+            with open(output_filename, "w+b") as pdf_file:
+                pdf_file.write(self.html_to_pdf(summary.to_html()))
 
             print(f"Summary berhasil disimpan dalam file PDF: {output_filename}")
         except Exception as e:
             print(f"Error while exporting to PDF: {str(e)}")
 
- # Menampilkan summary dalam card
-class SampleCardApp(QWidget):
-    def __init__(self, summary):
-        super().__init__()
-        self.setWindowTitle("Sample Summary Card")
-        self.setGeometry(100, 100, 400, 300)
+    def html_to_pdf(self, html):
+        from io import BytesIO
+        from xhtml2pdf import pisa
 
-        layout = QVBoxLayout()
+        pdf_file = BytesIO()
+        pisa.CreatePDF(BytesIO(html.encode('utf-8')), pdf_file)
+        return pdf_file.getvalue()
 
-        for index, row in summary.iterrows():
-            label_text = f"{row['ID Sample']} - {row['Tanggal Pickup']} - {row['RS/Klinik']}"
-            label = QLabel(label_text)
-            layout.addWidget(label)
-
-        self.setLayout(layout)
-
-if __name__ == '__main__':
+def main():
     keyfile = 'key.json'
     spreadsheet_name = '4.1. Generik - Sample'
     worksheet_name = 'Data Sampel'
@@ -89,10 +69,40 @@ if __name__ == '__main__':
     summary = sample_summary.generate_summary(data)
 
     if summary is not None:
-        app = QApplication([])
-        card_app = SampleCardApp(summary)
-        card_app.show()
+        try:
+            app = QApplication([])
 
-        sample_summary.export_to_pdf(summary, output_pdf_filename)
+            main_widget = QWidget()
+            layout = QGridLayout()
 
-        app.exec_()
+            for i, (index, row) in enumerate(summary.iterrows()):
+                label_text = f"{row['ID Sample']}\n{row['Tanggal Pickup']}\n{row['RS/Klinik']}"
+                label = QLabel(label_text)
+                label.setFont(QFont("Arial", 12, QFont.Bold))
+
+                # Penyesuaian label sesuai kebutuhan
+                label.setAlignment(Qt.AlignCenter)
+                label.setStyleSheet("border: 1px solid #000; padding: 10px;")
+
+                layout.addWidget(label, i // 2, i % 2)
+
+            scroll_area = QScrollArea()
+            scroll_content = QWidget()
+            scroll_content.setLayout(layout)
+            scroll_area.setWidget(scroll_content)
+            scroll_area.setWidgetResizable(True)
+
+            main_widget_layout = QGridLayout()
+            main_widget_layout.addWidget(scroll_area)
+
+            main_widget.setLayout(main_widget_layout)
+            main_widget.showMaximized()
+
+            sample_summary.export_to_pdf(summary, output_pdf_filename)
+
+            app.exec_()
+        except Exception as e:
+            print(f"Error in main application: {str(e)}")
+
+if __name__ == "__main__":
+    main()
