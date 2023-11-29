@@ -24,14 +24,24 @@ class SampleSummary:
             return None
 
         try:
+            # Membuat DataFrame dari data
             df_dp = pd.DataFrame(data)
+
+            # Mengonversi kolom tanggal menjadi tipe datetime
             df_dp['Tanggal Pickup'] = pd.to_datetime(df_dp['Tanggal Pickup'], format='%d/%m/%Y')
+
+            # Buat kolom bulan dari tanggal
             df_dp['Bulan'] = df_dp['Tanggal Pickup'].dt.strftime("%B")
 
+            # Filter data berdasarkan bulan Juli, Agustus, September, dan Oktober
             start_date = datetime(2023, 7, 1)
             end_date = datetime(2023, 10, 31)
             filtered_data = df_dp[(df_dp['Tanggal Pickup'] >= start_date) & (df_dp['Tanggal Pickup'] <= end_date)]
+            
+            # Mengurutkan data berdasarkan RS/Klinik dan Tanggal Pickup
             sorted_data = filtered_data.sort_values(by=['Tanggal Pickup', 'RS/Klinik'])
+
+            # Membuat ringkasan berdasarkan RS/Klinik
             summary = sorted_data.groupby(['ID Sample', 'Tanggal Pickup', 'RS/Klinik'])['ID Sample'].count().reset_index(name='Summary Pembelian')
             return summary
         except Exception as e:
@@ -43,6 +53,7 @@ class SampleSummary:
             return
 
         try:
+            # Membuat PDF dari HTML
             with open(output_filename, "w+b") as pdf_file:
                 pdf_file.write(self.html_to_pdf(summary.to_html()))
 
@@ -54,6 +65,7 @@ class SampleSummary:
         from io import BytesIO
         from xhtml2pdf import pisa
 
+        # Menghasilkan file PDF menggunakan xhtml2pdf
         pdf_file = BytesIO()
         pisa.CreatePDF(BytesIO(html.encode('utf-8')), pdf_file)
         return pdf_file.getvalue()
@@ -66,15 +78,18 @@ def main():
 
     sample_summary = SampleSummary(keyfile, spreadsheet_name, worksheet_name)
     data = sample_summary.get_data()
+    # Generate and export summary to PDF
     summary = sample_summary.generate_summary(data)
 
     if summary is not None:
         try:
+            # Membuat aplikasi PyQt5
             app = QApplication([])
 
             main_widget = QWidget()
             layout = QGridLayout()
 
+            # Menampilkan card perRS
             for i, (index, row) in enumerate(summary.iterrows()):
                 label_text = f"{row['ID Sample']}\n{row['Tanggal Pickup']}\n{row['RS/Klinik']}"
                 label = QLabel(label_text)
