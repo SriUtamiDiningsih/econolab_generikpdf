@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QGridLayout, QScrollArea
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QGridLayout, QScrollArea, QComboBox
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 from datetime import datetime
@@ -19,7 +19,7 @@ class SampleSummary:
             print(f"Error while fetching data: {str(e)}")
             return None
 
-    def generate_summary(self, data):
+    def generate_summary(self, data, selected_rs=None):
         if data is None:
             return None
 
@@ -37,7 +37,11 @@ class SampleSummary:
             start_date = datetime(2023, 7, 1)
             end_date = datetime(2023, 10, 31)
             filtered_data = df_dp[(df_dp['Tanggal Pickup'] >= start_date) & (df_dp['Tanggal Pickup'] <= end_date)]
-            
+
+            # Apply RS/Klinik filter if selected
+            if selected_rs:
+                filtered_data = filtered_data[filtered_data['RS/Klinik'] == selected_rs]
+
             # Mengurutkan data berdasarkan RS/Klinik dan Tanggal Pickup
             sorted_data = filtered_data.sort_values(by=['Tanggal Pickup', 'RS/Klinik'])
 
@@ -78,6 +82,7 @@ def main():
 
     sample_summary = SampleSummary(keyfile, spreadsheet_name, worksheet_name)
     data = sample_summary.get_data()
+
     # Generate and export summary to PDF
     summary = sample_summary.generate_summary(data)
 
@@ -87,32 +92,54 @@ def main():
             app = QApplication([])
 
             main_widget = QWidget()
-            layout = QGridLayout()
+            main_layout = QGridLayout()
 
-            # Menampilkan card perRS
-            for i, (index, row) in enumerate(summary.iterrows()):
-                label_text = f"{row['ID Sample']}\n{row['Tanggal Pickup']}\n{row['RS/Klinik']}"
-                label = QLabel(label_text)
-                label.setFont(QFont("Arial", 12, QFont.Bold))
+            # Menambahkan QComboBox untuk memfilter RS/Klinik
+            rs_combobox = QComboBox()
+            rs_combobox.addItem("All")  # Option to show all RS/Klinik
+            rs_combobox.addItems(summary['RS/Klinik'].unique())
 
-                # Penyesuaian label sesuai kebutuhan
-                label.setAlignment(Qt.AlignCenter)
-                label.setStyleSheet("border: 1px solid #000; padding: 10px;")
+            def on_rs_combobox_changed():
+                selected_rs = rs_combobox.currentText()
+                filtered_summary = sample_summary.generate_summary(data, selected_rs)
+                update_labels(filtered_summary)
 
-                layout.addWidget(label, i // 2, i % 2)
+            rs_combobox.currentIndexChanged.connect(on_rs_combobox_changed)
+
+            main_layout.addWidget(rs_combobox, 0, 0, 1, 2)
 
             scroll_area = QScrollArea()
             scroll_content = QWidget()
-            scroll_content.setLayout(layout)
+            scroll_layout = QGridLayout()
+            scroll_content.setLayout(scroll_layout)
             scroll_area.setWidget(scroll_content)
             scroll_area.setWidgetResizable(True)
 
-            main_widget_layout = QGridLayout()
-            main_widget_layout.addWidget(scroll_area)
+            main_layout.addWidget(scroll_area, 1, 0, 1, 2)
 
-            main_widget.setLayout(main_widget_layout)
+            main_widget.setLayout(main_layout)
             main_widget.showMaximized()
 
+            def update_labels(filtered_summary):
+                # Hapus label yang sudah ada di layout sebelum menambahkan yang baru
+                for i in reversed(range(scroll_layout.count())):
+                    item = scroll_layout.itemAt(i)
+                    if item.widget():
+                        item.widget().setParent(None)
+
+                # Menampilkan card perRS
+                for i, (index, row) in enumerate(filtered_summary.iterrows()):
+                    label_text = f"{row['ID Sample']}\n{row['Tanggal Pickup']}\n{row['RS/Klinik']}"
+                    label = QLabel(label_text)
+                    label.setFont(QFont("Arial", 12, QFont.Bold))
+
+                    # Penyesuaian label sesuai kebutuhan
+                    label.setAlignment(Qt.AlignCenter)
+                    label.setStyleSheet("border: 1px solid #000; padding: 10px;")
+
+                    scroll_layout.addWidget(label, i // 2, i % 2)
+
+            update_labels(summary)
             sample_summary.export_to_pdf(summary, output_pdf_filename)
 
             app.exec_()
